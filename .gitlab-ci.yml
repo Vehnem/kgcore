@@ -4,10 +4,8 @@ stages:
 
 build:
   stage: build
-  image: docker:24.0.5  # You can change this to another Python version if needed
+  image: docker:24.0.5
   script:
-    #- pwd && ls -la
-    #- cat README.md
     - docker build -t kgcore .
 
 test:
