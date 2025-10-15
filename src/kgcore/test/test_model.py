@@ -1,4 +1,4 @@
 
 
-test_graph():
+def test_graph():
   pass

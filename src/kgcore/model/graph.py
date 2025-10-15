@@ -12,4 +12,5 @@ class Triple(BaseModel):
     object: Node | Literal
 
 class Graph():
+    name: str
     triples: list[Triple]

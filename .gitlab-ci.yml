@@ -1,0 +1,17 @@
+stages:
+  - build
+  - test
+
+build:
+  stage: build
+  image: docker:24.0.5  # You can change this to another Python version if needed
+  script:
+    #- pwd && ls -la
+    #- cat README.md
+    - docker build -t kgcore .
+
+test:
+  stage: test
+  image: docker:24.0.5
+  script:
+    - docker run --rm kgcore .venv/bin/python -m pytest
