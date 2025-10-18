@@ -2,14 +2,65 @@ stages:
   - build
   - test
 
+variables:
+  PYTHON_VERSION: "3.12"
+
+# Build stage - Install dependencies and build the package
 build:
   stage: build
-  image: docker:24.0.5
+  image: ghcr.io/astral-sh/uv:debian
+  before_script:
+    - python --version
+    - uv --version
   script:
-    - docker build -t kgcore .
+    - echo "Installing project dependencies with uv..."
+    - uv venv
+    - uv pip install .
+    - echo "Installing development dependencies..."
+    - uv pip install pytest rdflib pydantic
+    - echo "Build completed successfully"
+  artifacts:
+    paths:
+      - .venv
+    expire_in: 1 hour
 
+# Test stage - Run pytest
 test:
   stage: test
-  image: docker:24.0.5
+  image: ghcr.io/astral-sh/uv:debian
+  dependencies:
+    - build
+  before_script:
+    - python --version
+    - echo "Installed packages:"
+    - uv pip list
   script:
-    - docker run --rm kgcore .venv/bin/python -m pytest
+    - echo "Running tests with pytest..."
+    - export PYTHONPATH=/builds/$CI_PROJECT_NAME/src
+    - uv run pytest src/kgcore/tests/ -v --tb=short
+    - echo "All tests passed!"
+  artifacts:
+    when: always
+    reports:
+      junit: test-results.xml
+    paths:
+      - test-results.xml
+    expire_in: 1 week
+  allow_failure: false
+
+# Optional: Run examples to ensure they work
+examples:
+  stage: test
+  image: ghcr.io/astral-sh/uv:debian
+  dependencies:
+    - build
+  before_script:
+    - python --version
+  script:
+    - echo "Running examples to ensure they work..."
+    - export PYTHONPATH=/builds/$CI_PROJECT_NAME/src
+    - uv run python -m kgcore.examples.01_minimal_inmemory
+    - uv run python -m kgcore.examples.02_rdf_file_persistence
+    - uv run python -m kgcore.examples.03_rdf_reification
+    - echo "All examples completed successfully!"
+  allow_failure: true
