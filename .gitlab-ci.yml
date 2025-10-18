@@ -10,7 +10,7 @@ build:
   stage: build
   image: ghcr.io/astral-sh/uv:debian
   before_script:
-    - python --version
+    - uv run python --version
     - uv --version
   script:
     - echo "Installing project dependencies with uv..."
@@ -31,7 +31,7 @@ test:
   dependencies:
     - build
   before_script:
-    - python --version
+    - uv run python --version
     - echo "Installed packages:"
     - uv pip list
   script:
@@ -55,7 +55,7 @@ examples:
   dependencies:
     - build
   before_script:
-    - python --version
+    - uv run python --version
   script:
     - echo "Running examples to ensure they work..."
     - export PYTHONPATH=/builds/$CI_PROJECT_NAME/src
