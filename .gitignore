@@ -79,3 +79,4 @@ yarn-debug.log*
 yarn-error.log*
 
 exaples_output/*
+.venv/
