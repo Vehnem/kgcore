@@ -11,8 +11,12 @@ class RDFLibGraph(KGGraph):
         self.g = Graph()
         self.base = base_iri
 
-    def create_entity(self, labels: List[str], props: Props | None = None) -> KGEntity:
-        e = KGEntity(labels=list(labels or []), props=dict(props or {}))
+    def create_entity(self, labels: List[str], props: Props | None = None, id: KGId = None) -> KGEntity:
+        if id:
+            e = KGEntity(id=id,labels=list(labels or []), props=dict(props or {}))
+        else:
+            e = KGEntity(labels=list(labels or []), props=dict(props or {}))
+
         s = URIRef(self.base + e.id)
         for lbl in labels or []:
             self.g.add((s, RDF.type, URIRef(self.base + lbl)))
@@ -63,3 +67,6 @@ class RDFLibGraph(KGGraph):
 
     def find_relations(self, type: str | None = None, props: Props | None = None):
         return []
+
+    def asGraph(self) -> Graph:
+        return self.g

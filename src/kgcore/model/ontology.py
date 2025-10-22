@@ -1,229 +1,257 @@
-# kgcore/ontology.py
-from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Dict, Iterable, Optional, Set, Tuple, List
+from dataclasses import dataclass
+from typing import List, Self, Dict
+from enum import Enum
+from rdflib import Graph, RDF, OWL, RDFS, SKOS, URIRef
+from pathlib import Path
+# A util for ontology related tasks
+
+# Common namespaces
+RDF_NAMESPACE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+RDFS_NAMESPACE = "http://www.w3.org/2000/01/rdf-schema#"
+OWL_NAMESPACE = "http://www.w3.org/2002/07/owl#"
+XSD_NAMESPACE = "http://www.w3.org/2001/XMLSchema#"
+PROV_NAMESPACE = "http://www.w3.org/ns/prov#"
+DCTERMS_NAMESPACE = "http://purl.org/dc/terms/"
+SCHEMA_NAMESPACE = "http://schema.org/"
+DUBLIN_CORE_NAMESPACE = "http://purl.org/dc/elements/1.1/"
 
 
-IRI = str
+class OntologyExtractor:
+    """
+    A class to extract the ontology from a given rdfgraph
+    all entities of type owl:Class, owl:ObjectProperty, owl:DatatypeProperty, owl:AnnotationProperty, owl:NamedIndividual
+    """
+    pass
+
+@dataclass
+class OwlClass:
+    uri: str
+    label: str
+    alias: List[str]
+    description: str
+    superclasses: List[Self]
+    subclases: List[Self]
+    equivalent: set[str]
+    disjointWith: set[str]
+
+    def __str__(self) -> str:
+        return f"OwlClass(\nuri={self.uri},\nlabel={self.label},\nalias={self.alias},\nsuperclasses={self.superclasses},\nsubclases={self.subclases},\nequivalent={self.equivalent})"
+
+
+class OwlPropertyType(Enum):
+    ObjectProperty = "ObjectProperty"
+    DatatypeProperty = "DatatypeProperty"
+    AnnotationProperty = "AnnotationProperty"
 
 
 @dataclass
-class OntClass:
-    """Ontology class (rdfs:Class)."""
-    iri: IRI
-    label: Optional[str] = None
-    comment: Optional[str] = None
-    parents: Set[IRI] = field(default_factory=set)  # rdfs:subClassOf
-    props: Dict[str, object] = field(default_factory=dict)
+class OwlProperty:
+    uri: str
+    type: OwlPropertyType
+    label: str
+    alias: List[str]
+    description: str
+    domain: OwlClass
+    range: OwlClass
+    equivalent: set[str]
+    min_cardinality: int = 1
+    max_cardinality: int = 10000
 
+
+    def __str__(self) -> str:
+        return f"OwlProperty(\nuri={self.uri},\ntype={self.type},\nlabel={self.label},\nalias={self.alias},\ndomain={self.domain},\nrange={self.range},\nequivalent={self.equivalent})"
 
 @dataclass
-class Predicate:
-    """Ontology property (rdf:Property / rdf:type-specific)."""
-    iri: IRI
-    label: Optional[str] = None
-    comment: Optional[str] = None
-    domain: Set[IRI] = field(default_factory=set)  # rdfs:domain (0..n)
-    range: Set[IRI] = field(default_factory=set)   # rdfs:range (0..n)
-    props: Dict[str, object] = field(default_factory=dict)
-
-
 class Ontology:
-    """
-    Minimal ontology API:
-    - add/get classes and predicates
-    - labels, comments, props
-    - subClassOf edges
-    - domain/range on predicates
-    - subclass checks and ancestry
-    - triple validation (subject type, predicate, object type)
-    """
+    # uri: str TODO
+    classes: List[OwlClass]
+    properties: List[OwlProperty]
 
-    def __init__(self) -> None:
-        self._classes: Dict[IRI, OntClass] = {}
-        self._preds: Dict[IRI, Predicate] = {}
+    def check_equivalent(self, uri_1: str, uri_2: str):
 
-    # ---------- Class API ----------
+        for _class in self.classes:
+            if uri_1 in _class.equivalent or uri_2 in _class.equivalent:
+                return True
 
-    def add_class(
-        self,
-        iri: IRI,
-        *,
-        label: Optional[str] = None,
-        comment: Optional[str] = None,
-        parents: Optional[Iterable[IRI]] = None,
-        props: Optional[Dict[str, object]] = None,
-    ) -> OntClass:
-        """Create or update a class."""
-        cls = self._classes.get(iri, OntClass(iri=iri))
-        if label is not None:
-            cls.label = label
-        if comment is not None:
-            cls.comment = comment
-        if parents:
-            cls.parents.update(parents)
-            for p in parents:
-                self._ensure_class(p)
-        if props:
-            cls.props.update(props)
-        self._classes[iri] = cls
-        return cls
+        for property in self.properties:
+            if uri_1 in property.equivalent or uri_2 in property.equivalent:
+                return True
 
-    def get_class(self, iri: IRI) -> Optional[OntClass]:
-        return self._classes.get(iri)
+        return False
 
-    def set_subclass(self, child: IRI, parent: IRI) -> None:
-        self._ensure_class(child).parents.add(parent)
-        self._ensure_class(parent)
+    def get_domain_range(self, uri: str):
+        for property in self.properties:
+            if uri == property.uri:
+                domain = property.domain.uri if property.domain else None
+                range = property.range.uri if property.range else None
+                return domain, range
+        return None, None
 
-    def set_class_label(self, iri: IRI, label: str) -> None:
-        self._ensure_class(iri).label = label
+    def __str__(self) -> str:
+        # INSERT_YOUR_CODE
+        import json
+        def default(obj):
+            # Handle dataclasses and enums
+            if hasattr(obj, "__dataclass_fields__"):
+                return {k: v for k, v in obj.__dict__.items()}
+            if isinstance(obj, set):
+                return list(obj)
+            if isinstance(obj, Enum):
+                return obj.value
+            return str(obj)
+        return json.dumps(self, default=default, indent=2)
 
-    def ancestors(self, iri: IRI) -> Set[IRI]:
-        """All transitive superclasses (excluding the class itself)."""
-        seen: Set[IRI] = set()
-        stack: List[IRI] = list(self._ensure_class(iri).parents)
-        while stack:
-            cur = stack.pop()
-            if cur in seen:
-                continue
-            seen.add(cur)
-            stack.extend(self._ensure_class(cur).parents)
-        return seen
+from rdflib import URIRef, Graph
+from rdflib.query import ResultRow
+from rdflib.namespace import OWL
 
-    def is_subclass_of(self, child: IRI, parent: IRI) -> bool:
-        if child == parent:
-            return True
-        return parent in self.ancestors(child)
-
-    # ---------- Predicate API ----------
-
-    def add_predicate(
-        self,
-        iri: IRI,
-        *,
-        label: Optional[str] = None,
-        comment: Optional[str] = None,
-        domain: Optional[Iterable[IRI]] = None,
-        range: Optional[Iterable[IRI]] = None,
-        props: Optional[Dict[str, object]] = None,
-    ) -> Predicate:
-        """Create or update a predicate (property)."""
-        pred = self._preds.get(iri, Predicate(iri=iri))
-        if label is not None:
-            pred.label = label
-        if comment is not None:
-            pred.comment = comment
-        if domain:
-            pred.domain.update(domain)
-            for d in domain:
-                self._ensure_class(d)
-        if range:
-            pred.range.update(range)
-            for r in range:
-                self._ensure_class(r)
-        if props:
-            pred.props.update(props)
-        self._preds[iri] = pred
-        return pred
-
-    def get_predicate(self, iri: IRI) -> Optional[Predicate]:
-        return self._preds.get(iri)
-
-    def set_domain(self, pred: IRI, domain: Iterable[IRI]) -> None:
-        p = self._ensure_pred(pred)
-        p.domain = set(domain)
-        for d in p.domain:
-            self._ensure_class(d)
-
-    def set_range(self, pred: IRI, rng: Iterable[IRI]) -> None:
-        p = self._ensure_pred(pred)
-        p.range = set(rng)
-        for r in p.range:
-            self._ensure_class(r)
-
-    def set_predicate_label(self, iri: IRI, label: str) -> None:
-        self._ensure_pred(iri).label = label
-
-    # ---------- Validation ----------
-
-    def validate_triple(
-        self,
-        subject_type: IRI,
-        predicate: IRI,
-        object_type: IRI,
-    ) -> Tuple[bool, str]:
+def get_property_cardinality(ontology_graph: Graph, property: str):
+    # if functional property
+    property_type_rs = ontology_graph.query(
         """
-        Validate (subject_type, predicate, object_type) against domain/range.
-        - Accepts subclasses (subject/object may be subclass of declared domain/range).
-        - Empty domain/range means 'unspecified' -> treated as valid.
-        Returns (ok, reason).
-        """
-        p = self._preds.get(predicate)
-        if p is None:
-            return False, f"Unknown predicate: {predicate}"
-
-        # Domain
-        if p.domain:
-            if not any(self.is_subclass_of(subject_type, d) for d in p.domain):
-                return (
-                    False,
-                    f"Domain violation: {subject_type} !⊑ any({sorted(p.domain)})",
-                )
-
-        # Range
-        if p.range:
-            if not any(self.is_subclass_of(object_type, r) for r in p.range):
-                return (
-                    False,
-                    f"Range violation: {object_type} !⊑ any({sorted(p.range)})",
-                )
-
-        return True, "ok"
-
-    # ---------- Utilities ----------
-
-    def _ensure_class(self, iri: IRI) -> OntClass:
-        if iri not in self._classes:
-            self._classes[iri] = OntClass(iri=iri)
-        return self._classes[iri]
-
-    def _ensure_pred(self, iri: IRI) -> Predicate:
-        if iri not in self._preds:
-            self._preds[iri] = Predicate(iri=iri)
-        return self._preds[iri]
-
-    def labels(self, iri: IRI) -> Optional[str]:
-        """Get best label for class/predicate."""
-        obj = self._classes.get(iri) or self._preds.get(iri)
-        return obj.label if obj else None
-
-    # ---------- Export (stubs you can extend) ----------
-
-    def to_tbox(self) -> Dict[str, object]:
-        """
-        Export a tiny TBox-like dict. Intended for testing, not wire format.
-        """
-        return {
-            "classes": [
-                {
-                    "iri": c.iri,
-                    "label": c.label,
-                    "comment": c.comment,
-                    "parents": sorted(c.parents),
-                    "props": dict(c.props),
-                }
-                for c in self._classes.values()
-            ],
-            "predicates": [
-                {
-                    "iri": p.iri,
-                    "label": p.label,
-                    "comment": p.comment,
-                    "domain": sorted(p.domain),
-                    "range": sorted(p.range),
-                    "props": dict(p.props),
-                }
-                for p in self._preds.values()
-            ],
+        SELECT ?type
+        WHERE {
+            ?property a ?type .
         }
+        """,
+        initBindings={"property": URIRef(property)}
+    )
+
+    property_types = set(str(row["type"]) for row in property_type_rs if isinstance(row, ResultRow))
+    
+    if str(OWL.FunctionalProperty) in property_types:
+        return (0, 1)
+    
+    # if restriction on property
+    #_:restriction a owl:Restriction ;
+    # owl:onProperty ex:hasSSN ;
+    # owl:maxCardinality "1"^^xsd:nonNegativeInteger .
+
+    restriction_rs = ontology_graph.query(
+        """
+        SELECT ?maxCardinality ?minCardinality
+        WHERE {
+            ?restriction a owl:Restriction ;
+            owl:onProperty ?property ;
+            OPTIONAL { ?restriction owl:maxCardinality ?maxCardinality . }
+            OPTIONAL { ?restriction owl:minCardinality ?minCardinality . }
+        }
+        """,
+        initBindings={"property": URIRef(property)}
+    )
+
+    max_cardinality = 10000
+    min_cardinality = 1
+    for row in restriction_rs:
+        if isinstance(row, ResultRow):
+            if row["maxCardinality"] is not None:
+                max_cardinality = int(row["maxCardinality"])
+            if row["minCardinality"] is not None:
+                min_cardinality = int(row["minCardinality"])
+        
+    return (min_cardinality, max_cardinality)
+
+class OntologyUtil:
+
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def extract_ontology(ontology_file):
+        pass
+
+    @staticmethod
+    def load_ontology_from_file(ontology_file: Path):
+        graph = Graph()
+        graph.parse(ontology_file)
+        return OntologyUtil.load_ontology_from_graph(graph)
+
+
+    @staticmethod
+    def load_ontology_from_graph(graph):
+
+        classes : Dict[str, OwlClass] = {}
+        properties : Dict[str, OwlProperty] = {}
+
+        def fetch_info(uri: str):
+            label = str(graph.value(s, RDFS.label))
+            if not label: label = str(s)
+
+            description = str(graph.value(s, RDFS.comment))
+            if not description: description = ""
+
+            alias = [ str(o) for s, p, o in graph.triples((uri, SKOS.altLabel, None)) ]
+            if not alias: alias = []
+
+            equivalent = set() 
+            for _, _, o in graph.triples((uri, OWL.equivalentClass, None)):
+                equivalent.add(str(o))
+            for _, _, o in graph.triples((uri, OWL.equivalentProperty, None)):
+                equivalent.add(str(o))
+
+            return label, alias, equivalent, description
+
+        def fetch_property_info(uri: URIRef):
+            label, alias, equivalent, description = fetch_info(uri)
+
+            domain = None
+            domain_uri = graph.value(uri, RDFS.domain)
+            if domain_uri and str(domain_uri) in classes:
+                domain = classes[str(domain_uri)]
+
+            range = None
+            range_uri = graph.value(uri, RDFS.range)
+            if range_uri:
+                range_uri_str = str(range_uri)
+                if range_uri_str in classes:
+                    range = classes[range_uri_str]
+                elif range_uri_str.startswith(XSD_NAMESPACE):
+                    range = OwlClass(
+                        uri=range_uri_str,
+                        label=range_uri_str,
+                        alias=[],
+                        superclasses=[],
+                        subclases=[],
+                        equivalent=set(),
+                        description="",
+                        disjointWith=set()
+                    )
+
+            min_cardinality, max_cardinality = get_property_cardinality(graph, uri)
+
+            return label, alias, equivalent, description, domain, range, min_cardinality, max_cardinality
+
+        def fetch_class_info(uri: URIRef):
+
+            label, alias, equivalent, description = fetch_info(uri)
+
+            disjointWith = set()
+            for _, _, o in graph.triples((uri, OWL.disjointWith, None)):
+                disjointWith.add(str(o))
+
+            for s, _, _ in graph.triples((None, OWL.disjointWith, uri)):
+                disjointWith.add(str(s))
+
+            return label, alias, equivalent, description, disjointWith
+
+        for s, p, o in graph.triples((None, RDF.type, OWL.Class)):
+
+            label, alias, equivalent, description, disjointWith = fetch_class_info(s)
+
+            classes[str(s)] = OwlClass(uri=str(s), label=label, alias=alias, superclasses=[], subclases=[], equivalent=equivalent, description=description, disjointWith=disjointWith)
+
+        for s, p, o in graph.triples((None, RDF.type, OWL.ObjectProperty)):
+            label, alias, equivalent, description, domain, range, min_cardinality, max_cardinality = fetch_property_info(s)
+            properties[str(s)] = OwlProperty(uri=str(s), type=OwlPropertyType.ObjectProperty, label=label, alias=alias, domain=domain, range=range, equivalent=equivalent, description=description, min_cardinality=min_cardinality, max_cardinality=max_cardinality)
+
+        for s, p, o in graph.triples((None, RDF.type, OWL.DatatypeProperty)):
+            label, alias, equivalent, description, domain, range, min_cardinality, max_cardinality = fetch_property_info(s)
+            properties[str(s)] = OwlProperty(uri=str(s), type=OwlPropertyType.DatatypeProperty, label=label, alias=alias, domain=domain, range=range, equivalent=equivalent, description=description, min_cardinality=min_cardinality, max_cardinality=max_cardinality)
+
+
+        return Ontology(classes=list(classes.values()), properties=list(properties.values()))
+
+if __name__ == "__main__":
+    ontology_util = OntologyUtil()
+    ontology = ontology_util.load_ontology_from_file("/home/marvin/project/data/current/ontology.ttl")
+    print(ontology)

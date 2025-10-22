@@ -10,8 +10,11 @@ class InMemoryGraph(KGGraph):
         self.relations: Dict[KGId, KGRelation] = {}
         self.meta: Dict[KGId, Props] = {}
 
-    def create_entity(self, labels: List[str], props: Props | None = None) -> KGEntity:
-        e = KGEntity(labels=list(labels or []), props=dict(props or {}))
+    def create_entity(self, labels: List[str], props: Props | None = None, id: KGId = None) -> KGEntity:
+        if id:
+            e = KGEntity(id=id, labels=list(labels or []), props=dict(props or {}))
+        else:
+            e = KGEntity(labels=list(labels or []), props=dict(props or {}))
         self.entities[e.id] = e
         return e
 

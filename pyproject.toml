@@ -58,5 +58,12 @@ line-length = 88
 target-version = ["py312"]
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 include = ["kgcore*"]
+
+[tool.setuptools.package-dir]
+"" = "src" 
+
+
+[project.scripts]
+kgcore = "kgcore.cli.main:cli"

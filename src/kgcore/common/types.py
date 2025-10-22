@@ -10,7 +10,14 @@ A unique internal identifier for any graph element
 (entity, relation, or triple).
 """
 
-Props = Dict[str, Any]
+
+@dataclass
+class Lit:
+    value: str
+    datatype: Optional[str]
+
+
+Props = Dict[str, Any | Lit]
 
 def new_id() -> KGId:
     return str(uuid4())
