@@ -5,6 +5,10 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 KGId = str
+
+def is_uri(id: KGId) -> bool:
+    # TODO improve later
+    return id.startswith("http://") or id.startswith("https://")
 """
 A unique internal identifier for any graph element
 (entity, relation, or triple).

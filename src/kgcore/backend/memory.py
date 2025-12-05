@@ -40,3 +40,6 @@ class InMemoryGraph(KGGraph):
         if type: out = [r for r in out if r.type == type]
         if props: out = [r for r in out if self._match_props(r.props, props)]
         return list(out)
+
+    def update_entity(self, id: KGId, props: Props) -> None:
+        self.entities[id].props = {**self.entities[id].props, **props}
