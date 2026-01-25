@@ -1,8 +1,9 @@
-# kgcore/backend/factory.py
+"""Factory for creating knowledge graph backends."""
+
 from __future__ import annotations
 from typing import Dict, Type, Any, Optional, Union
 import importlib
-from kgcore.model.base import KGGraph
+from kgcore.api.backend import KGBackend
 
 class BackendFactory:
     """Factory for creating knowledge graph backends from various packages."""
@@ -11,13 +12,18 @@ class BackendFactory:
         self._backends: Dict[str, Dict[str, Any]] = {
             # kgcore built-in backends
             "memory": {
-                "module": "kgcore.backend.memory",
-                "class": "InMemoryGraph",
+                "module": "kgcore.backend.core.core_memory",
+                "class": "InMemoryBackend",
                 "package": "kgcore"
             },
             "rdf_file": {
-                "module": "kgcore.backend.rdf_file", 
-                "class": "RDFFileGraph",
+                "module": "kgcore.backend.rdf.rdf_file", 
+                "class": "RDFFileBackend",
+                "package": "kgcore"
+            },
+            "rdflib": {
+                "module": "kgcore.backend.rdf.rdf_rdflib",
+                "class": "RDFLibBackend",
                 "package": "kgcore"
             },
             # kgback backends
@@ -55,7 +61,7 @@ class BackendFactory:
         """Get list of available backend names."""
         return list(self._backends.keys())
     
-    def create_backend(self, backend_name: str, **kwargs) -> KGGraph:
+    def create_backend(self, backend_name: str, **kwargs) -> KGBackend:
         """Create a backend instance by name."""
         if backend_name not in self._backends:
             available = ", ".join(self.get_available_backends())
@@ -85,7 +91,7 @@ class BackendFactory:
 # Global factory instance
 _factory = BackendFactory()
 
-def create_backend(backend_name: str, **kwargs) -> KGGraph:
+def create_backend(backend_name: str, **kwargs) -> KGBackend:
     """Convenience function to create a backend using the global factory."""
     return _factory.create_backend(backend_name, **kwargs)
 

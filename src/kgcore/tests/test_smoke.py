@@ -1,10 +1,8 @@
 # tests/test_smoke.py
-import tempfile
-import os
-from kgcore.api import KGGraph, KG
-import pytest
+from kgcore.api import KG
 
-def roundtrip_test(kg: KGGraph):
+def test_memory_roundtrip():
+    kg = KG()
     a = kg.create_entity(["A"], {"x": 1})
     b = kg.create_entity(["B"], {"y": 2})
     r = kg.create_relation("R", a.id, b.id, {"w": 3})
