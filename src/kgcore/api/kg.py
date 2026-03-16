@@ -119,6 +119,10 @@ class KnowledgeGraph:
             properties=properties,
         )
 
+    def find_entities(self, types: Optional[Iterable[str]] = None, properties: Optional[Dict[str, Any]] = None) -> List[KGEntity]:
+        entities = self.model.find_entities(self.backend, types=types, properties=properties)
+        return entities if isinstance(entities, list) else [entities]
+        
     def update_entity(self, entity: KGEntity) -> None:
         self.model.update_entity(self.backend, entity=entity)
 

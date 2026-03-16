@@ -44,6 +44,15 @@ class KGModel(ABC):
         ...
 
     @abstractmethod
+    def find_entities(
+        self,
+        backend: KGBackend,
+        types: Optional[Iterable[str]] = None,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> List[KGEntity]:
+        ...
+
+    @abstractmethod
     def delete_entity(
         self,
         backend: KGBackend,

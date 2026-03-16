@@ -35,6 +35,62 @@ class RDFBaseModel(KGModel):
         # For the sketch, assume `value` is already a full IRI string.
         return URIRef(value)
 
+    def _binding_to_node(self, binding: Dict[str, Any]) -> rdflib.term.Node:
+        """Convert SPARQL JSON binding object to an rdflib node."""
+        t = binding.get("type")
+        v = binding.get("value")
+        if t == "uri":
+            return URIRef(v)
+        if t == "bnode":
+            return rdflib.BNode(v)
+        if t == "literal":
+            dt = binding.get("datatype")
+            lang = binding.get("xml:lang") or binding.get("lang")
+            if dt:
+                return Literal(v, datatype=URIRef(dt))
+            if lang:
+                return Literal(v, lang=lang)
+            return Literal(v)
+        return Literal(v)
+
+    def _normalize_query_rows(self, result: Any) -> List[Dict[str, Any]]:
+        """
+        Normalize query output across backends.
+        - RDFLibBackend: iterable ResultRow objects
+        - RDFSparqlBackend: SPARQL JSON dict with bindings
+        """
+        if result is None:
+            return []
+
+        # SPARQL JSON format: {"results": {"bindings": [...]}}
+        if isinstance(result, dict):
+            bindings = result.get("results", {}).get("bindings", [])
+            rows: List[Dict[str, Any]] = []
+            for b in bindings:
+                rows.append({k: self._binding_to_node(v) for k, v in b.items()})
+            return rows
+
+        rows: List[Dict[str, Any]] = []
+        for row in result:
+            if isinstance(row, dict):
+                rows.append(row)
+                continue
+            if hasattr(row, "asdict"):
+                rows.append(row.asdict())
+                continue
+
+            # Fallback for tuple-like row objects that support keyed lookup.
+            candidate: Dict[str, Any] = {}
+            for key in ("s", "p", "o", "type"):
+                try:
+                    candidate[key] = row[key]
+                except Exception:
+                    pass
+            if candidate:
+                rows.append(candidate)
+
+        return rows
+
     # --- entity ops ---
 
     def create_entity(
@@ -102,7 +158,8 @@ class RDFBaseModel(KGModel):
         }}
         """
         types_result = backend.query_sparql(types_query)
-        types = [str(row["type"]) for row in types_result]
+        type_rows = self._normalize_query_rows(types_result)
+        types = [str(row["type"]) for row in type_rows if "type" in row]
 
         # 2) get properties (exclude rdf:type)
         props_query = f"""
@@ -112,9 +169,12 @@ class RDFBaseModel(KGModel):
         }}
         """
         props_result = backend.query_sparql(props_query)
+        prop_rows = self._normalize_query_rows(props_result)
 
         properties: Dict[str, Any] = {}
-        for row in props_result:
+        for row in prop_rows:
+            if "p" not in row or "o" not in row:
+                continue
             p = str(row["p"])
             o = row["o"]
             # Very naive: if it's a Literal, take its Python value, else its string IRI
@@ -133,6 +193,69 @@ class RDFBaseModel(KGModel):
             "types": types,
             "properties": properties,
         }
+
+    def find_entities(
+        self,
+        backend: KGBackend,
+        types: Optional[Iterable[str]] = None,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> List[KGEntity]:
+        assert isinstance(backend, RDFBackend), "RDFBaseModel requires RDFBackend"
+
+        type_list = list(types or [])
+        where_parts = [
+            "?s ?p_any ?o_any .",
+            "FILTER (isIRI(?s))",
+        ]
+
+        # Require each requested rdf:type to be present on the entity.
+        for t in type_list:
+            where_parts.append(f"?s a <{self._iri(t)}> .")
+
+        # Require each requested property key/value pair to be present.
+        for prop_iri_str, value in (properties or {}).items():
+            prop_iri = self._iri(prop_iri_str)
+            if isinstance(value, URIRef):
+                obj_pattern = f"<{value}>"
+            elif isinstance(value, Literal):
+                obj_pattern = value.n3()
+            else:
+                obj_pattern = Literal(value).n3()
+            where_parts.append(f"?s <{prop_iri}> {obj_pattern} .")
+
+        query = f"""
+        SELECT DISTINCT ?s WHERE {{
+          {' '.join(where_parts)}
+        }}
+        """
+        result = backend.query_sparql(query)
+        rows = self._normalize_query_rows(result)
+
+        entities: List[KGEntity] = []
+        for row in rows:
+            s = row.get("s")
+            if not isinstance(s, URIRef):
+                continue
+            try:
+                entity_data = self.get_entity(backend, str(s))
+            except Exception:
+                entity_data = None
+            if not entity_data:
+                entities.append(KGEntity(id=str(s)))
+                continue
+            entity_properties = [
+                KGProperty(key=k, value=v)
+                for k, v in entity_data.get("properties", {}).items()
+            ]
+            entities.append(
+                KGEntity(
+                    id=entity_data["id"],
+                    labels=entity_data.get("types", []),
+                    properties=entity_properties,
+                )
+            )
+
+        return entities
 
     def update_entity(
         self,
@@ -254,9 +377,12 @@ class RDFBaseModel(KGModel):
             """
         
         result = backend.query_sparql(query)
+        rows = self._normalize_query_rows(result)
         neighbors: List[KGEntity] = []
         
-        for row in result:
+        for row in rows:
+            if "o" not in row:
+                continue
             o = row["o"]
             if isinstance(o, URIRef):
                 # Get entity data for the neighbor
