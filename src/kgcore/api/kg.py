@@ -40,6 +40,13 @@ class KGEntity:
         """Alias for labels for compatibility."""
         return self.labels
 
+    def get_property(self, key: str) -> List[KGProperty]:
+        return [prop for prop in self.properties if prop.key == key]
+    
+    def get_property_value(self, key: str) -> List[KGProperty]:
+        return [prop.value for prop in self.properties if prop.key == key]
+    
+
 @dataclass(frozen=True)
 class KGRelation:
     """
